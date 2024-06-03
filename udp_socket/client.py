@@ -2,7 +2,7 @@ import socket
 import time
 import struct
 import math
-
+import argparse
 # Constants
 MAX_MESSAGE_LENGTH = 203
 BUFFER_LENGTH = 300
@@ -13,6 +13,7 @@ FIN = 3
 FIN_ACK = 4
 NORMAL_DATA = 5
 MAX_RETRIES = 2
+MESSAGESTOSEND = 12
 # Protocol formats
 send_protocol_format = 'hBB199s'
 receive_protocol_format = 'hBBd191s'
@@ -61,26 +62,29 @@ class UDPClient:
             else:
                 self.num_of_received+=1
                 self.rtt.append(end-start)
-                printMessage(response)
+                # printMessage(response)
                 return response,end-start,attempt
         return (None,None,attempt-1)
 
     def connect(self):
         # Send SYN
-        response,*_ = self.messageTransfer(SYN,retries=5)
+        response,rtt,attempt = self.messageTransfer(SYN,retries=5)
         if(response!=None):
             if(response[2]==SYN_ACK):
+                print(f'{typeToStr[SYN]}请求报文，第 {attempt} 次尝试发送成功，RTT={rtt} ms')
                 print("连接成功!")
                 return True
             else:
                 print("连接失败 服务器应答错误!")
         else:
+            print(f'{typeToStr[SYN]}请求报文，经过 {attempt} 次尝试后仍失败，发生丢包')
             print("连接失败 服务器未应答!")
         return None;
 
     def disconnect(self):
         # Send FIN
         # Wait for FIN-ACK
+        print("断开链接中.......")
         response,*_ = self.messageTransfer(FIN,retries=5)
         if(response!=None):
             if(response[2]==FIN_ACK):
@@ -90,7 +94,7 @@ class UDPClient:
                 print("断开连接失败 服务器应答错误!")
         else: 
             print("断开连接失败 服务器未应答!")
-        print("单方面断开连接中.....")
+        print("单方面断开连接....")
         return None
 
     def send_data(self):
@@ -99,15 +103,17 @@ class UDPClient:
             if(response[0]!=self.seq_no):
                 print("发生未知错误")
                 exit(0)
-            print(f'seqNo {self.seq_no} attemp{attempt} 成功 rtt={rtt}')
+            print(f'序列号 {self.seq_no}，第 {attempt} 次尝试成功，RTT={rtt} ms')
         else:
-            print(f'seqNo {self.seq_no} {attempt}次attemp都失败 丢包')
+            print(f'序列号 {self.seq_no} 经过 {attempt} 次尝试后仍失败，发生丢包')
 
     def calculate_statistics(self):
             # 计算并返回所需的统计信息
             if self.num_of_sended == 0:
                 return "No packets sent."
 
+            print(f"总发送包数{self.num_of_sended}")
+            print(f"总接受包数{self.num_of_received}")
             # 计算丢包率
             loss_rate = (1 - self.num_of_received / self.num_of_sended) * 100
 
@@ -123,13 +129,13 @@ class UDPClient:
 
             return f"Loss Rate: {loss_rate:.2f}%, Max RTT: {max_rtt*1000:.5f} us, Min RTT: {min_rtt*1000:.5f} us, Average RTT: {avg_rtt*1000:.5f} us, RTT Standard Deviation: {std_rtt*1000:.5f} us"
 
-    def run(self,messageNums):
+    def run(self):
         if(self.connect()==None):
             return None
         else:
             self.seq_no+=1
         try:
-            for _ in range(messageNums):
+            for _ in range(MESSAGESTOSEND):
                 self.send_data()
                 self.seq_no+=1
         finally:
@@ -139,4 +145,8 @@ class UDPClient:
 
 if __name__ == "__main__":
     client = UDPClient("127.0.0.1", 12345)
-    client.run(10)
+    parser = argparse.ArgumentParser(description='Simple udp client of simple imitation of tcp on udp with rtt statistic')
+    parser.add_argument("-m","--messages",type=int,default=12,help="Set the num of messages to send")
+    args = parser.parse_args()
+    MESSAGESTOSEND = args.messages
+    client.run()

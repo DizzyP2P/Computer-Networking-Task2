@@ -16,6 +16,8 @@ DROP_POS = 0.2
 UNCONNECTED = 0
 CONNECTED = 1
 DISCONNECTED = 2
+DEBUG = 1
+
 typeToStr = {0:"SYN",1:"SYN_ACK",2:"ACK",3:"FIN",4:"FIN_ACK",5:"NORMAL_DATA"}
 receive_protocol_format = 'hBB199s'
 send_protocol_format = 'hBBd191s'
@@ -27,8 +29,10 @@ def pack_message(seq_no, msg_type,payload=b''):
 def unpack_message(data):
     seq_no, version, msg_type,payload = struct.unpack(receive_protocol_format, data)
     return seq_no, version, msg_type,payload.rstrip(b'\0')
+
 def printMessage(M):
     print(f'seq.No:{M[0]} type:{typeToStr[M[2]]}')
+
 class Connection:
     def __init__(self,sock,addr) -> None:
         self.addr = addr
