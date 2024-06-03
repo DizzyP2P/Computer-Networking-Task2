@@ -41,6 +41,8 @@ class UDPClient:
         self.rtt = []
         self.num_of_sended = 0  # 发送的 UDP 包总数
         self.num_of_received = 0  # 接收到的 UDP 包总数
+        self.firstReceivedTime = 0
+        self.lastReceivedTime = 0
 
     def send_packet(self, msg_type, payload=b''):
         message = pack_message(self.seq_no, msg_type, payload)
@@ -64,6 +66,10 @@ class UDPClient:
             if(response == None):
                 attempt+=1
             else:
+                if(self.firstReceivedTime == 0):
+                    self.firstReceivedTime = response[3]
+                else:
+                    self.lastReceivedTime = response[3]
                 printMessage(response)
                 self.num_of_received+=1
                 self.rtt.append(end-start)
@@ -121,6 +127,7 @@ class UDPClient:
 
             print(f"Total packets sent: {self.num_of_sended}")
             print(f"Total packets received: {self.num_of_received}")
+            print(f"Total response time: {self.lastReceivedTime - self.firstReceivedTime:.5f}ms")
 
             # 计算丢包率
             loss_rate = (1 - self.num_of_received / self.num_of_sended) * 100
