@@ -3,6 +3,7 @@ import time
 import struct
 import math
 import argparse
+import os
 from datetime import datetime
 # Constants
 MAX_MESSAGE_LENGTH = 203
@@ -32,6 +33,9 @@ def unpack_message(data):
     seq_no, version, msg_type,time,payload = struct.unpack(receive_protocol_format, data)
     return seq_no, version, msg_type, time,payload.rstrip(b'\0')
 
+def RandomPayload(length):
+    return bytearray(os.urandom(length))
+
 class UDPClient:
     def __init__(self, server_ip, server_port):
         self.server_address = (server_ip, server_port)
@@ -55,6 +59,7 @@ class UDPClient:
             return unpack_message(data)
         except socket.timeout:
             return None
+
 
     def messageTransfer(self,msg_type,payload=b'',retries = MAX_RETRIES):
         attempt = 1
@@ -111,7 +116,7 @@ class UDPClient:
 
 
     def send_data(self):
-        response, rtt, attempt = self.messageTransfer(NORMAL_DATA, "Hello, TCP over UDP!")
+        response, rtt, attempt = self.messageTransfer(NORMAL_DATA, RandomPayload(199))
         if response is not None:
             if response[0] != self.seq_no:
                 print("An unknown error occurred")
@@ -158,9 +163,9 @@ class UDPClient:
             print(self.calculate_statistics())
 
 if __name__ == "__main__":
-    client = UDPClient("127.0.0.1", 12345)
     parser = argparse.ArgumentParser(description='Simple udp client of simple imitation of tcp on udp with rtt statistic')
     parser.add_argument("-m","--messages",type=int,default=12,help="Set the num of messages to send")
+    parser.add_argument("-p","--port",type=int,default=12345,help="Set the port of the server(default 12345)")
     parser.add_argument("-r","--retries",type=int,default=2,help="Set the num of retries after loss")
     parser.add_argument("-v","--verbose",default=False,action="store_true",help="With more content of messages")
     parser.add_argument("-cr","--cretries",type=int,default=5,help="Set the num of retries after loss of request about connection")
@@ -169,4 +174,8 @@ if __name__ == "__main__":
     MAX_RETRIES = args.retries
     VERBOSE = args.verbose
     CONNECTION_RETRIES  = args.cretries
+    if(args.port<1024 or args.port >65535):
+        print("Error: Port num not in range (1024-65535)")
+        exit(22)
+    client = UDPClient("127.0.0.1", args.port)
     client.run()
