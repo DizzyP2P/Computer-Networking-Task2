@@ -1,7 +1,7 @@
 import socket
 import time
 import struct
-import threading
+import math
 
 # Constants
 MAX_MESSAGE_LENGTH = 203
@@ -33,10 +33,14 @@ class UDPClient:
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.client_socket.settimeout(0.1)  # Timeout for socket operations
         self.seq_no = 0  # Sequence number for packets
+        self.rtt = []
+        self.num_of_sended = 0  # 发送的 UDP 包总数
+        self.num_of_received = 0  # 接收到的 UDP 包总数
 
     def send_packet(self, msg_type, payload=b''):
         message = pack_message(self.seq_no, msg_type, payload)
         self.client_socket.sendto(message, self.server_address)
+        self.num_of_sended +=1
 
     def receive_packet(self):
         try:
@@ -55,6 +59,8 @@ class UDPClient:
             if(response == None):
                 attempt+=1
             else:
+                self.num_of_received+=1
+                self.rtt.append(end-start)
                 printMessage(response)
                 return response,end-start,attempt
         return (None,None,attempt-1)
@@ -97,6 +103,26 @@ class UDPClient:
         else:
             print(f'seqNo {self.seq_no} {attempt}次attemp都失败 丢包')
 
+    def calculate_statistics(self):
+            # 计算并返回所需的统计信息
+            if self.num_of_sended == 0:
+                return "No packets sent."
+
+            # 计算丢包率
+            loss_rate = (1 - self.num_of_received / self.num_of_sended) * 100
+
+            # 如果没有接收到任何包，则无法计算 RTT 相关统计数据
+            if not self.rtt:
+                return f"Loss Rate: {loss_rate:.2f}%, No RTT data available."
+
+            # 计算 RTT 最大值、最小值、平均值和标准差
+            max_rtt = max(self.rtt)
+            min_rtt = min(self.rtt)
+            avg_rtt = sum(self.rtt) / len(self.rtt)
+            std_rtt = math.sqrt(sum((x - avg_rtt) ** 2 for x in self.rtt) / len(self.rtt))
+
+            return f"Loss Rate: {loss_rate:.2f}%, Max RTT: {max_rtt*1000:.5f} us, Min RTT: {min_rtt*1000:.5f} us, Average RTT: {avg_rtt*1000:.5f} us, RTT Standard Deviation: {std_rtt*1000:.5f} us"
+
     def run(self,messageNums):
         if(self.connect()==None):
             return None
@@ -109,7 +135,8 @@ class UDPClient:
         finally:
             self.seq_no = 0
             self.disconnect()
+            print(self.calculate_statistics())
 
 if __name__ == "__main__":
     client = UDPClient("127.0.0.1", 12345)
-    client.run(100)
+    client.run(10)
