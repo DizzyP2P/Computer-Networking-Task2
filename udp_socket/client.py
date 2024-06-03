@@ -3,6 +3,7 @@ import time
 import struct
 import math
 import argparse
+from datetime import datetime
 # Constants
 MAX_MESSAGE_LENGTH = 203
 BUFFER_LENGTH = 300
@@ -13,13 +14,16 @@ FIN = 3
 FIN_ACK = 4
 NORMAL_DATA = 5
 MAX_RETRIES = 2
+CONNECTION_RETRIES = 5
 MESSAGESTOSEND = 12
+VERBOSE = 0
 # Protocol formats
 send_protocol_format = 'hBB199s'
 receive_protocol_format = 'hBBd191s'
 typeToStr = {0:"SYN",1:"SYN_ACK",2:"ACK",3:"FIN",4:"FIN_ACK",5:"NORMAL_DATA"}
 def printMessage(M):
-    print(f'seq.No:{M[0]} type:{typeToStr[M[2]]}')
+    if(VERBOSE):
+        print(f'seq.No:{M[0]} type:{typeToStr[M[2]]} time:{datetime.fromtimestamp(M[3])}')
 def pack_message(seq_no, msg_type, payload=b''):
     payload_bytes = payload.encode('utf-8') if isinstance(payload, str) else payload
     return struct.pack(send_protocol_format, seq_no, VERSION, msg_type, payload_bytes.ljust(199, b'\0'))
@@ -60,60 +64,64 @@ class UDPClient:
             if(response == None):
                 attempt+=1
             else:
+                printMessage(response)
                 self.num_of_received+=1
                 self.rtt.append(end-start)
-                # printMessage(response)
                 return response,end-start,attempt
         return (None,None,attempt-1)
 
     def connect(self):
         # Send SYN
-        response,rtt,attempt = self.messageTransfer(SYN,retries=5)
+        response,rtt,attempt = self.messageTransfer(SYN,retries=CONNECTION_RETRIES)
         if(response!=None):
             if(response[2]==SYN_ACK):
-                print(f'{typeToStr[SYN]}请求报文，第 {attempt} 次尝试发送成功，RTT={rtt} ms')
-                print("连接成功!")
+                print(f'{typeToStr[SYN]} request got responsed after {attempt} attempts RTT={rtt} ms, Server time{datetime.fromtimestamp(response[3])}')
+                print("Connected!")
                 return True
             else:
-                print("连接失败 服务器应答错误!")
+                print("Failed to build connection, Error in response!")
         else:
-            print(f'{typeToStr[SYN]}请求报文，经过 {attempt} 次尝试后仍失败，发生丢包')
-            print("连接失败 服务器未应答!")
+            print(f"Failed to build connection!{typeToStr[SYN]} request, No reply after {attempt} timeouts")
         return None;
 
     def disconnect(self):
         # Send FIN
         # Wait for FIN-ACK
-        print("断开链接中.......")
-        response,*_ = self.messageTransfer(FIN,retries=5)
-        if(response!=None):
-            if(response[2]==FIN_ACK):
-                print("断开成功!")
+        print("Disconnecting.......")
+        response, attempt,rtt = self.messageTransfer(FIN, retries=CONNECTION_RETRIES)
+        if response is not None:
+            if response[2] == FIN_ACK:
+                print(f'{typeToStr[FIN]} request got responsed after {attempt} attempts RTT={rtt} ms, Server time{datetime.fromtimestamp(response[3])}')
+                print("Disconnection successful!")
                 return True
             else:
-                print("断开连接失败 服务器应答错误!")
-        else: 
-            print("断开连接失败 服务器未应答!")
-        print("单方面断开连接....")
+                print("Disconnection failed: incorrect server response!")
+        else:
+            print(f"Failed to build connection!{typeToStr[FIN]} request, No reply after {attempt} timeouts")
+            print("Disconnection failed: no response from server!")
+
+        print("Disconnecting unilaterally....")
         return None
 
+
     def send_data(self):
-        response,rtt,attempt = self.messageTransfer(NORMAL_DATA, "Hello, TCP over UDP!")
-        if(response!=None):
-            if(response[0]!=self.seq_no):
-                print("发生未知错误")
+        response, rtt, attempt = self.messageTransfer(NORMAL_DATA, "Hello, TCP over UDP!")
+        if response is not None:
+            if response[0] != self.seq_no:
+                print("An unknown error occurred")
                 exit(0)
-            print(f'序列号 {self.seq_no}，第 {attempt} 次尝试成功，RTT={rtt} ms')
+            print(f'Sequence number {self.seq_no}, attempt {attempt} successful, RTT={rtt} ms,Server time{datetime.fromtimestamp(response[3])}')
         else:
-            print(f'序列号 {self.seq_no} 经过 {attempt} 次尝试后仍失败，发生丢包')
+            print(f'Sequence number {self.seq_no} failed after {attempt} attempts, packet loss occurred')
 
     def calculate_statistics(self):
             # 计算并返回所需的统计信息
             if self.num_of_sended == 0:
                 return "No packets sent."
 
-            print(f"总发送包数{self.num_of_sended}")
-            print(f"总接受包数{self.num_of_received}")
+            print(f"Total packets sent: {self.num_of_sended}")
+            print(f"Total packets received: {self.num_of_received}")
+
             # 计算丢包率
             loss_rate = (1 - self.num_of_received / self.num_of_sended) * 100
 
@@ -126,7 +134,6 @@ class UDPClient:
             min_rtt = min(self.rtt)
             avg_rtt = sum(self.rtt) / len(self.rtt)
             std_rtt = math.sqrt(sum((x - avg_rtt) ** 2 for x in self.rtt) / len(self.rtt))
-
             return f"Loss Rate: {loss_rate:.2f}%, Max RTT: {max_rtt*1000:.5f} us, Min RTT: {min_rtt*1000:.5f} us, Average RTT: {avg_rtt*1000:.5f} us, RTT Standard Deviation: {std_rtt*1000:.5f} us"
 
     def run(self):
@@ -147,6 +154,12 @@ if __name__ == "__main__":
     client = UDPClient("127.0.0.1", 12345)
     parser = argparse.ArgumentParser(description='Simple udp client of simple imitation of tcp on udp with rtt statistic')
     parser.add_argument("-m","--messages",type=int,default=12,help="Set the num of messages to send")
+    parser.add_argument("-r","--retries",type=int,default=2,help="Set the num of retries after loss")
+    parser.add_argument("-v","--verbose",default=False,action="store_true",help="With more content of messages")
+    parser.add_argument("-cr","--cretries",type=int,default=5,help="Set the num of retries after loss of request about connection")
     args = parser.parse_args()
     MESSAGESTOSEND = args.messages
+    MAX_RETRIES = args.retries
+    VERBOSE = args.verbose
+    CONNECTION_RETRIES  = args.cretries
     client.run()
