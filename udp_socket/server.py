@@ -3,8 +3,9 @@ import random
 import time
 import struct
 import argparse
-from datetime import datetime
+import threading
 import logging
+import sys
 
 # Constants
 MAX_MESSAGE_LENGTH = 203
@@ -27,6 +28,7 @@ receive_protocol_format = 'hBB199s'
 send_protocol_format = 'hBBd191s'
 
 logger = None
+
 # Setup logging
 def setup_logging(tofile,filename="server.log"):
     global logger
@@ -87,6 +89,7 @@ class Udp_server:
     def __init__(self, host, port) -> None:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server_socket.bind((host, port))
+        self.server_socket.settimeout(0.1)
         self.ConnectionList = {}
         logger.info(f"Server started at {host}:{port}")
 
@@ -98,11 +101,25 @@ class Udp_server:
             data, addr = self.server_socket.recvfrom(BUFFER_LENGTH)
             return unpack_message(data), addr
         except socket.timeout:
-            return None
+            return None,None
+
+    def read_input(self):
+        logger.info("Enter quit to quit server")
+        while True:
+            line = input()
+            # 如果输入的是"quit"，则退出循环
+            if line.strip().lower() == "quit":
+                print("Quit!")
+                self.Running = False
+                break
+            else:
+                logger.info("Invalid command(only quit)")
 
     def run(self):
+        thread = threading.Thread(target=server.read_input)
+        thread.start()
         self.Running = True
-        while self.Running:
+        while self.Running==True:
             data, addr = self.receive_packet()
             if data:
                 logger.info(f'Received: seq.No:{data[0]} type:{typeToStr[data[2]]} from {addr}')
