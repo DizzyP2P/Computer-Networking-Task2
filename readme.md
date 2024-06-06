@@ -1,4 +1,5 @@
 task2 简单的报文rtt测试 以及对tcp连接建立和取消的简单模拟
+运行环境: python3.12
 
 usage: client.py [-h] [-m MESSAGES] [-p PORT] [-r RETRIES] [-v] [-cr CRETRIES]
 
